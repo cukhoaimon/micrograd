@@ -17,8 +17,8 @@ class Value:
         out = Value(self.data + other.data, (self, other), '+')
 
         def _backward():
-            self.grad += out.grad
-            other.grad += out.grad
+            self.grad += 1.0 * out.grad
+            other.grad += 1.0 * out.grad
 
         out._backward = _backward
         return out
@@ -41,25 +41,23 @@ class Value:
     def __rmul__(self, other):
         return self.__mul__(other)
 
-    """
-        f(x) = x^n 
-        f'(x) = n.x'.x^(n-1)
-    """
     def __pow__(self, power):
         assert isinstance(power, (int, float))
-        out = Value(self.data**power, (self,), f"^{power}")
+        out = Value(self.data ** power, (self,), f"^{power}")
 
         def _backward():
-            self.grad += power * out.grad * (self.data ** power - 1)
+            self.grad += power * (self.data ** (power - 1)) * out.grad
 
-        self._backward = _backward
+        out._backward = _backward
 
         return out
 
     def __truediv__(self, other):
-        return self * other ** -1
+        out = self * other ** -1
+        out._op = '/'
+        return out
 
-    def __neg__(self): # -self
+    def __neg__(self):  # -self
         return self * (-1)
 
     def __sub__(self, other):
@@ -67,39 +65,25 @@ class Value:
         out._op = '-'
         return out
 
-    """
-        L(x)  = e^x
-        L'(x) = dL/dx = d(e^x)/dx = e^x
+    def __rsub__(self, other):
+        return self - other
 
-        L(1)  = e^1
-        L'(1) = L(1) = e^1
-
-        -> self = x
-        -> out  = e^x
-    """
-    def exp(self):
-        out = Value(math.exp(self.data), (self,), _op='exp')
-
-        def _backward():
-            self.grad += out.data * out.grad
-
-        self._backward = _backward
-        return out
-
-    """
-        f(x) = tanh(x) = (e^2x - 1) / (e^2x + 1)
-        df/dx = 1 - tanh^2(x) 
-        
-        f(u) = tanh(u) = (e^2u - 1) / (e^2u + 1)
-        df/dx = (1 - tanh^2(u)) * u' 
-    """
     def tanh(self):
         x = self.data
         t = (math.exp(2 * x) - 1) / (math.exp(2 * x) + 1)
         out = Value(t, _children=(self,), _op="tanh")
 
         def _backward():
-            self.grad += (1 - out.data ** 2) * out.grad
+            self.grad += (1 - t ** 2) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def exp(self):
+        out = Value(math.exp(self.data), (self,), _op='exp')
+
+        def _backward():
+            self.grad += out.data * out.grad
 
         out._backward = _backward
         return out
@@ -107,15 +91,16 @@ class Value:
     def backward(self):
         topo = []
         visited = set()
+
         def build_topo(v):
             if v not in visited:
                 visited.add(v)
                 for child in v._prev:
                     build_topo(child)
                 topo.append(v)
+
         build_topo(self)
 
-        # go one variable at a time and apply the chain rule to get its gradient
         self.grad = 1
         for v in reversed(topo):
             v._backward()
