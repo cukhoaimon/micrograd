@@ -86,6 +86,24 @@ class Value:
         self._backward = _backward
         return out
 
+    """
+        f(x) = tanh(x) = (e^2x - 1) / (e^2x + 1)
+        df/dx = 1 - tanh^2(x) 
+        
+        f(u) = tanh(u) = (e^2u - 1) / (e^2u + 1)
+        df/dx = (1 - tanh^2(u)) * u' 
+    """
+    def tanh(self):
+        x = self.data
+        t = (math.exp(2 * x) - 1) / (math.exp(2 * x) + 1)
+        out = Value(t, _children=(self,), _op="tanh")
+
+        def _backward():
+            self.grad += (1 - out.data ** 2) * out.grad
+
+        out._backward = _backward
+        return out
+
     def backward(self):
         topo = []
         visited = set()
